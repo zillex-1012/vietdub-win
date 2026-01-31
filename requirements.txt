@@ -1,0 +1,25 @@
+# VietDub Solo Dependencies
+
+streamlit>=1.28.0
+pandas>=2.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Media Processing
+moviepy>=1.0.3,<2.0.0
+pydub>=0.25.1
+ffmpeg-python>=0.2.0
+yt-dlp>=2023.11.16
+
+# AI/ML
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+numba>=0.57.0
+llvmlite>=0.40.0
+
+# Whisper (OpenAI)
+openai-whisper>=20231117
+
+# Build Tools (for creating installer)
+pyinstaller>=6.0.0
