@@ -6,7 +6,7 @@ Build command: pyinstaller visub.spec --noconfirm
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 block_cipher = None
 
@@ -73,6 +73,7 @@ hiddenimports += collect_submodules('altair')
 datas += collect_data_files('streamlit')
 datas += collect_data_files('altair')
 datas += collect_data_files('webview')
+datas += copy_metadata('streamlit')
 
 a = Analysis(
     ['run_app.pyw'],
