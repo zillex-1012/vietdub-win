@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # Cho phép chạy thủ công từ GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
@@ -27,28 +27,46 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade pip wheel setuptools
+        
+        # Core
         pip install pyinstaller
         pip install streamlit pandas requests python-dotenv
+        
+        # Media
         pip install moviepy pydub ffmpeg-python yt-dlp
+        
+        # AI/ML (CPU only for smaller size)
         pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
         pip install numba llvmlite
         pip install openai-whisper
-        pip install pywebview
+        
+        # Streamlit dependencies that need explicit install
+        pip install altair pydeck validators watchdog tornado
+        pip install pillow packaging importlib-metadata
     
     - name: Build with PyInstaller
       run: |
         pyinstaller visub.spec --noconfirm
         
-    - name: Download Inno Setup
+    - name: Verify build output
       run: |
-        choco install innosetup -y
+        if (Test-Path "dist\VietDub\VietDub.exe") {
+          Write-Host "Build successful! VietDub.exe exists."
+          Get-ChildItem "dist\VietDub" | Measure-Object | Select-Object -ExpandProperty Count
+        } else {
+          Write-Error "Build failed! VietDub.exe not found."
+          exit 1
+        }
+        
+    - name: Install Inno Setup
+      run: choco install innosetup -y
         
     - name: Build Installer
       run: |
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss
         
-    - name: Upload Installer Artifact
+    - name: Upload Installer
       uses: actions/upload-artifact@v4
       with:
         name: Visub_Setup
@@ -60,7 +78,5 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: installer/output/Visub_Setup.exe
-        draft: false
-        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
