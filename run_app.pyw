@@ -1,110 +1,118 @@
 """
 VietDub Desktop Launcher
-Simple, stable approach - launches Streamlit and opens browser
-No console window, no pywebview complexity
+Final stable version - direct Streamlit CLI call
 """
-import subprocess
 import sys
 import os
 import webbrowser
 import time
 import socket
+import threading
 
-def get_base_path():
-    """Get the application base path"""
-    if getattr(sys, 'frozen', False):
-        return sys._MEIPASS  # PyInstaller temp folder
-    return os.path.dirname(os.path.abspath(__file__))
-
-def get_app_path():
-    """Get the folder where exe is located (for app.py)"""
+def get_app_folder():
+    """Get folder where VietDub.exe is located"""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 def wait_for_server(port, timeout=120):
     """Wait for Streamlit server to start"""
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start = time.time()
+    while time.time() - start < timeout:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
-            if result == 0:
+            if sock.connect_ex(('127.0.0.1', port)) == 0:
+                sock.close()
                 return True
+            sock.close()
         except:
             pass
         time.sleep(1)
     return False
 
+def run_streamlit_server(app_path, port):
+    """Run Streamlit server in current thread"""
+    try:
+        # Import Streamlit's CLI directly
+        from streamlit.web import cli as stcli
+        
+        # Set sys.argv as if running from command line
+        sys.argv = [
+            'streamlit', 'run', app_path,
+            '--server.port', str(port),
+            '--server.headless', 'true',
+            '--browser.gatherUsageStats', 'false',
+            '--browser.serverAddress', 'localhost',
+            '--global.developmentMode', 'false',
+            '--server.enableCORS', 'false',
+            '--server.enableXsrfProtection', 'false',
+        ]
+        
+        # Run Streamlit
+        stcli.main()
+        
+    except SystemExit:
+        pass  # Streamlit calls sys.exit on shutdown
+    except Exception as e:
+        # Log error for debugging
+        error_log = os.path.join(get_app_folder(), 'vietdub_error.log')
+        with open(error_log, 'w') as f:
+            f.write(f"Streamlit error: {str(e)}\n")
+            import traceback
+            f.write(traceback.format_exc())
+
+def show_error(message):
+    """Show error message box on Windows"""
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, message, "VietDub - Lỗi", 0x10)
+    except:
+        pass
+
 def main():
-    # Setup paths
-    app_folder = get_app_path()
+    # Setup
+    app_folder = get_app_folder()
     os.chdir(app_folder)
     
     app_py = os.path.join(app_folder, 'app.py')
     port = 8501
     url = f"http://localhost:{port}"
     
-    # Environment
-    env = os.environ.copy()
-    env['STREAMLIT_SERVER_PORT'] = str(port)
-    env['STREAMLIT_SERVER_HEADLESS'] = 'true'
-    env['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
-    env['STREAMLIT_BROWSER_SERVER_ADDRESS'] = 'localhost'
+    # Check if app.py exists
+    if not os.path.exists(app_py):
+        show_error(f"Không tìm thấy file app.py tại:\n{app_py}")
+        return
     
-    # Hide console on Windows
-    startupinfo = None
-    creationflags = 0
-    if sys.platform == 'win32':
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-        creationflags = subprocess.CREATE_NO_WINDOW
-    
-    # Launch Streamlit using the bundled streamlit module directly
-    # We use runpy to run streamlit as a module
-    import runpy
-    import threading
-    
-    def run_streamlit():
-        sys.argv = [
-            'streamlit', 'run', app_py,
-            '--server.port', str(port),
-            '--server.headless', 'true',
-            '--browser.gatherUsageStats', 'false',
-            '--browser.serverAddress', 'localhost',
-            '--global.developmentMode', 'false',
-        ]
-        try:
-            runpy.run_module('streamlit', run_name='__main__', alter_sys=True)
-        except SystemExit:
-            pass
+    # Set environment
+    os.environ['STREAMLIT_SERVER_PORT'] = str(port)
+    os.environ['STREAMLIT_SERVER_HEADLESS'] = 'true'
+    os.environ['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
     
     # Start Streamlit in background thread
-    t = threading.Thread(target=run_streamlit, daemon=True)
-    t.start()
+    server_thread = threading.Thread(
+        target=run_streamlit_server, 
+        args=(app_py, port),
+        daemon=True
+    )
+    server_thread.start()
     
-    # Wait for server and open browser
+    # Wait for server to be ready
     if wait_for_server(port, timeout=120):
+        # Open browser
         webbrowser.open(url)
-        # Keep app running
+        
+        # Keep app running until thread dies
         try:
-            while t.is_alive():
+            while server_thread.is_alive():
                 time.sleep(1)
         except KeyboardInterrupt:
             pass
     else:
-        # Show error on Windows
-        if sys.platform == 'win32':
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(
-                0, 
-                "Không thể khởi động server. Vui lòng thử lại hoặc liên hệ hỗ trợ.",
-                "VietDub - Lỗi", 
-                0x10  # MB_ICONERROR
-            )
+        show_error(
+            "Không thể khởi động server.\n\n"
+            "Vui lòng kiểm tra file vietdub_error.log trong thư mục cài đặt."
+        )
 
 if __name__ == '__main__':
     main()
