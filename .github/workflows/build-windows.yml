@@ -34,6 +34,7 @@ jobs:
         pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
         pip install numba llvmlite
         pip install openai-whisper
+        pip install pywebview
     
     - name: Build with PyInstaller
       run: |
