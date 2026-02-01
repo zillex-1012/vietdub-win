@@ -1,47 +1,28 @@
 """
 VietDub Desktop Launcher
-Entry point for PyInstaller - runs Streamlit app inside a native window using pywebview
+Simple, stable approach - launches Streamlit and opens browser
+No console window, no pywebview complexity
 """
+import subprocess
 import sys
 import os
-import socket
-import threading
+import webbrowser
 import time
-import webview
-from streamlit.web.cli import main as st_cli
-
-def find_free_port():
-    """Find a free port to run Streamlit on"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+import socket
 
 def get_base_path():
-    """Get the base path for the application"""
+    """Get the application base path"""
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS  # PyInstaller temp folder
+    return os.path.dirname(os.path.abspath(__file__))
+
+def get_app_path():
+    """Get the folder where exe is located (for app.py)"""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
-def start_streamlit(port, app_path):
-    """Start Streamlit server in a separate thread"""
-    sys.argv = [
-        "streamlit",
-        "run",
-        app_path,
-        f"--server.port={port}",
-        "--server.headless=true",
-        "--browser.gatherUsageStats=false",
-        "--global.developmentMode=false",
-        "--server.connnectionless=true"
-    ]
-    # Suppress stdout/stderr
-    sys.stdout = open(os.devnull, 'w')
-    sys.stderr = open(os.devnull, 'w')
-    
-    st_cli()
-
-def wait_for_server(port, timeout=30):
+def wait_for_server(port, timeout=120):
     """Wait for Streamlit server to start"""
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -54,40 +35,76 @@ def wait_for_server(port, timeout=30):
                 return True
         except:
             pass
-        time.sleep(0.5)
+        time.sleep(1)
     return False
 
 def main():
-    base_path = get_base_path()
-    os.chdir(base_path)
-    app_path = os.path.join(base_path, 'app.py')
+    # Setup paths
+    app_folder = get_app_path()
+    os.chdir(app_folder)
     
-    # Use dynamic port
-    port = find_free_port()
-    url = f"http://127.0.0.1:{port}"
+    app_py = os.path.join(app_folder, 'app.py')
+    port = 8501
+    url = f"http://localhost:{port}"
     
-    # Start Streamlit in a thread
-    t = threading.Thread(target=start_streamlit, args=(port, app_path))
-    t.daemon = True
+    # Environment
+    env = os.environ.copy()
+    env['STREAMLIT_SERVER_PORT'] = str(port)
+    env['STREAMLIT_SERVER_HEADLESS'] = 'true'
+    env['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
+    env['STREAMLIT_BROWSER_SERVER_ADDRESS'] = 'localhost'
+    
+    # Hide console on Windows
+    startupinfo = None
+    creationflags = 0
+    if sys.platform == 'win32':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        creationflags = subprocess.CREATE_NO_WINDOW
+    
+    # Launch Streamlit using the bundled streamlit module directly
+    # We use runpy to run streamlit as a module
+    import runpy
+    import threading
+    
+    def run_streamlit():
+        sys.argv = [
+            'streamlit', 'run', app_py,
+            '--server.port', str(port),
+            '--server.headless', 'true',
+            '--browser.gatherUsageStats', 'false',
+            '--browser.serverAddress', 'localhost',
+            '--global.developmentMode', 'false',
+        ]
+        try:
+            runpy.run_module('streamlit', run_name='__main__', alter_sys=True)
+        except SystemExit:
+            pass
+    
+    # Start Streamlit in background thread
+    t = threading.Thread(target=run_streamlit, daemon=True)
     t.start()
     
-    # Wait for server
-    if wait_for_server(port):
-        # Create native window
-        webview.create_window(
-            "VietDub - AI Video Dubbing",
-            url=url,
-            width=1280,
-            height=800,
-            resizable=True,
-            confirm_close=True
-        )
-        # Start webview GUI
-        webview.start(private_mode=False)
+    # Wait for server and open browser
+    if wait_for_server(port, timeout=120):
+        webbrowser.open(url)
+        # Keep app running
+        try:
+            while t.is_alive():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
     else:
-        # Fallback or error handling
-        import ctypes
-        ctypes.windll.user32.MessageBoxW(0, "Failed to start Streamlit server", "Error", 0)
+        # Show error on Windows
+        if sys.platform == 'win32':
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0, 
+                "Không thể khởi động server. Vui lòng thử lại hoặc liên hệ hỗ trợ.",
+                "VietDub - Lỗi", 
+                0x10  # MB_ICONERROR
+            )
 
 if __name__ == '__main__':
     main()

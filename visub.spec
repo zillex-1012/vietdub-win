@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 VietDub PyInstaller Spec File
-Build command: pyinstaller visub.spec --noconfirm
+Build: pyinstaller visub.spec --noconfirm
 """
 
 import sys
@@ -10,7 +10,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 
 block_cipher = None
 
-# Collect all necessary data files
+# === DATA FILES ===
 datas = [
     ('app.py', '.'),
     ('config.py', '.'),
@@ -19,62 +19,80 @@ datas = [
     ('components', 'components'),
 ]
 
-# Collect hidden imports for complex packages
+# Collect package data
+datas += collect_data_files('streamlit')
+datas += collect_data_files('altair')
+datas += collect_data_files('pydeck')
+
+# CRITICAL: Copy metadata for packages that need it
+datas += copy_metadata('streamlit')
+datas += copy_metadata('altair')
+datas += copy_metadata('pandas')
+datas += copy_metadata('numpy')
+datas += copy_metadata('pydeck')
+datas += copy_metadata('validators')
+datas += copy_metadata('packaging')
+datas += copy_metadata('importlib_metadata')
+
+# === HIDDEN IMPORTS ===
 hiddenimports = [
-    # GUI Wrapper
-    'webview',
-    'clr',
-    'System.Windows.Forms',
-    'System.Threading',
-    
-    # Streamlit and its dependencies
+    # Streamlit core
     'streamlit',
     'streamlit.web.cli',
-    'streamlit.runtime.scriptrunner',
     'streamlit.web.bootstrap',
+    'streamlit.runtime.scriptrunner',
+    'streamlit.runtime.caching',
+    'streamlit.components.v1',
+    
+    # Streamlit dependencies  
     'altair',
     'validators',
-    'gitpython',
     'pydeck',
     'watchdog',
+    'watchdog.observers',
+    'watchdog.events',
+    'tornado',
+    'tornado.web',
+    'tornado.websocket',
     
-    # Whisper and ML
+    # Data/ML
+    'pandas',
+    'numpy',
+    'PIL',
+    'PIL.Image',
+    
+    # Whisper & Torch
     'whisper',
     'torch',
     'torchaudio',
-    'numpy',
     'numba',
     'llvmlite',
     
-    # Media processing
+    # Media
     'moviepy',
     'moviepy.editor',
-    'moviepy.video.io.VideoFileClip',
-    'moviepy.audio.io.AudioFileClip',
     'pydub',
     'ffmpeg',
-    
-    # Networking
-    'requests',
-    'urllib3',
     'yt_dlp',
     
-    # Data handling
-    'pandas',
-    'PIL',
-    'PIL.Image',
+    # Network
+    'requests',
+    'urllib3',
+    
+    # Packaging (required by streamlit)
+    'packaging',
+    'packaging.version',
+    'packaging.specifiers',
+    'packaging.requirements',
+    'importlib_metadata',
 ]
 
-# Add all streamlit submodules
+# Add all submodules
 hiddenimports += collect_submodules('streamlit')
 hiddenimports += collect_submodules('altair')
+hiddenimports += collect_submodules('tornado')
 
-# Collect data files from packages
-datas += collect_data_files('streamlit')
-datas += collect_data_files('altair')
-datas += collect_data_files('webview')
-datas += copy_metadata('streamlit')
-
+# === ANALYSIS ===
 a = Analysis(
     ['run_app.pyw'],
     pathex=[],
@@ -89,6 +107,8 @@ a = Analysis(
         'tkinter',
         'PyQt5',
         'PySide2',
+        'IPython',
+        'jupyter',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -108,7 +128,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No console window!
+    console=False,  # NO CONSOLE WINDOW
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
