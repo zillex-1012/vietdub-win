@@ -1,16 +1,14 @@
 """
 VietDub Desktop Launcher
-Entry point for PyInstaller - runs Streamlit app without console window
-
-This file uses .pyw extension to suppress console on Windows.
-PyInstaller will compile this into run_app.exe
+Entry point for PyInstaller - runs Streamlit app inside a native window using pywebview
 """
-import subprocess
 import sys
 import os
-import webbrowser
-import time
 import socket
+import threading
+import time
+import webview
+from streamlit.web.cli import main as st_cli
 
 def find_free_port():
     """Find a free port to run Streamlit on"""
@@ -20,66 +18,76 @@ def find_free_port():
         return s.getsockname()[1]
 
 def get_base_path():
-    """Get the base path for the application (works for both dev and frozen)"""
+    """Get the base path for the application"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         return os.path.dirname(sys.executable)
-    else:
-        # Running as script
-        return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.abspath(__file__))
+
+def start_streamlit(port, app_path):
+    """Start Streamlit server in a separate thread"""
+    sys.argv = [
+        "streamlit",
+        "run",
+        app_path,
+        f"--server.port={port}",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false",
+        "--global.developmentMode=false",
+        "--server.connnectionless=true"
+    ]
+    # Suppress stdout/stderr
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+    
+    st_cli()
+
+def wait_for_server(port, timeout=30):
+    """Wait for Streamlit server to start"""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            if result == 0:
+                return True
+        except:
+            pass
+        time.sleep(0.5)
+    return False
 
 def main():
     base_path = get_base_path()
     os.chdir(base_path)
-    
-    # Find free port
-    port = find_free_port()
-    url = f"http://localhost:{port}"
-    
-    # Set environment to prevent Streamlit welcome message
-    env = os.environ.copy()
-    env['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
-    env['STREAMLIT_SERVER_HEADLESS'] = 'true'
-    env['STREAMLIT_SERVER_PORT'] = str(port)
-    
-    # Path to app.py
     app_path = os.path.join(base_path, 'app.py')
     
-    # Determine python executable
-    if getattr(sys, 'frozen', False):
-        # When frozen, use the bundled Python
-        python_exe = os.path.join(base_path, 'python.exe')
-        if not os.path.exists(python_exe):
-            python_exe = sys.executable
+    # Use dynamic port
+    port = find_free_port()
+    url = f"http://127.0.0.1:{port}"
+    
+    # Start Streamlit in a thread
+    t = threading.Thread(target=start_streamlit, args=(port, app_path))
+    t.daemon = True
+    t.start()
+    
+    # Wait for server
+    if wait_for_server(port):
+        # Create native window
+        webview.create_window(
+            "VietDub - AI Video Dubbing",
+            url=url,
+            width=1280,
+            height=800,
+            resizable=True,
+            confirm_close=True
+        )
+        # Start webview GUI
+        webview.start(private_mode=False)
     else:
-        python_exe = sys.executable
-    
-    # Launch Streamlit
-    # CREATE_NO_WINDOW flag (0x08000000) hides the console
-    CREATE_NO_WINDOW = 0x08000000
-    
-    process = subprocess.Popen(
-        [python_exe, '-m', 'streamlit', 'run', app_path,
-         f'--server.port={port}',
-         '--server.headless=true',
-         '--browser.gatherUsageStats=false',
-         '--global.developmentMode=false'],
-        env=env,
-        creationflags=CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
-        cwd=base_path,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-    
-    # Wait a moment then open browser
-    time.sleep(2)
-    webbrowser.open(url)
-    
-    # Keep the process running
-    try:
-        process.wait()
-    except KeyboardInterrupt:
-        process.terminate()
+        # Fallback or error handling
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, "Failed to start Streamlit server", "Error", 0)
 
 if __name__ == '__main__':
     main()

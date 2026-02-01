@@ -21,6 +21,12 @@ datas = [
 
 # Collect hidden imports for complex packages
 hiddenimports = [
+    # GUI Wrapper
+    'webview',
+    'clr',
+    'System.Windows.Forms',
+    'System.Threading',
+    
     # Streamlit and its dependencies
     'streamlit',
     'streamlit.web.cli',
@@ -66,6 +72,7 @@ hiddenimports += collect_submodules('altair')
 # Collect data files from packages
 datas += collect_data_files('streamlit')
 datas += collect_data_files('altair')
+datas += collect_data_files('webview')
 
 a = Analysis(
     ['run_app.pyw'],

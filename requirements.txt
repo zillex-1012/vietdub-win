@@ -21,5 +21,8 @@ llvmlite>=0.40.0
 # Whisper (OpenAI)
 openai-whisper>=20231117
 
-# Build Tools (for creating installer)
+# Build Tools
 pyinstaller>=6.0.0
+
+# GUI Wrapper
+pywebview>=4.4.1
