@@ -1,6 +1,6 @@
 """
 VietDub Desktop Launcher
-Final stable version - direct Streamlit CLI call
+Final stable version - shows errors directly in message box
 """
 import sys
 import os
@@ -8,11 +8,16 @@ import webbrowser
 import time
 import socket
 import threading
+import traceback
+
+# Global variable to capture error
+startup_error = None
 
 def get_app_folder():
-    """Get folder where VietDub.exe is located"""
+    """Get folder where app.py is located (PyInstaller extracts to _MEIPASS)"""
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        # PyInstaller extracts bundled files to this temp folder
+        return sys._MEIPASS
     return os.path.dirname(os.path.abspath(__file__))
 
 def wait_for_server(port, timeout=120):
@@ -33,11 +38,10 @@ def wait_for_server(port, timeout=120):
 
 def run_streamlit_server(app_path, port):
     """Run Streamlit server in current thread"""
+    global startup_error
     try:
-        # Import Streamlit's CLI directly
         from streamlit.web import cli as stcli
         
-        # Set sys.argv as if running from command line
         sys.argv = [
             'streamlit', 'run', app_path,
             '--server.port', str(port),
@@ -49,29 +53,25 @@ def run_streamlit_server(app_path, port):
             '--server.enableXsrfProtection', 'false',
         ]
         
-        # Run Streamlit
         stcli.main()
         
     except SystemExit:
-        pass  # Streamlit calls sys.exit on shutdown
+        pass
     except Exception as e:
-        # Log error for debugging
-        error_log = os.path.join(get_app_folder(), 'vietdub_error.log')
-        with open(error_log, 'w') as f:
-            f.write(f"Streamlit error: {str(e)}\n")
-            import traceback
-            f.write(traceback.format_exc())
+        startup_error = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
 
-def show_error(message):
-    """Show error message box on Windows"""
+def show_message(title, message, is_error=True):
+    """Show message box on Windows"""
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(0, message, "VietDub - Lỗi", 0x10)
+        icon = 0x10 if is_error else 0x40
+        ctypes.windll.user32.MessageBoxW(0, message, title, icon)
     except:
-        pass
+        print(f"{title}: {message}")
 
 def main():
-    # Setup
+    global startup_error
+    
     app_folder = get_app_folder()
     os.chdir(app_folder)
     
@@ -79,9 +79,9 @@ def main():
     port = 8501
     url = f"http://localhost:{port}"
     
-    # Check if app.py exists
+    # Check app.py exists
     if not os.path.exists(app_py):
-        show_error(f"Không tìm thấy file app.py tại:\n{app_py}")
+        show_message("VietDub - Lỗi", f"Không tìm thấy file app.py!\n\nĐường dẫn: {app_py}")
         return
     
     # Set environment
@@ -97,22 +97,32 @@ def main():
     )
     server_thread.start()
     
-    # Wait for server to be ready
-    if wait_for_server(port, timeout=120):
-        # Open browser
-        webbrowser.open(url)
+    # Wait for server (max 60 seconds, check error every 5 seconds)
+    waited = 0
+    while waited < 60:
+        if startup_error:
+            show_message("VietDub - Lỗi khởi động", startup_error)
+            return
         
-        # Keep app running until thread dies
-        try:
-            while server_thread.is_alive():
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+        if wait_for_server(port, timeout=5):
+            webbrowser.open(url)
+            try:
+                while server_thread.is_alive():
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+            return
+        
+        waited += 5
+    
+    # Timeout - show error
+    error_msg = "Không thể khởi động server sau 60 giây.\n\n"
+    if startup_error:
+        error_msg += startup_error
     else:
-        show_error(
-            "Không thể khởi động server.\n\n"
-            "Vui lòng kiểm tra file vietdub_error.log trong thư mục cài đặt."
-        )
+        error_msg += "Server không phản hồi. Vui lòng thử khởi động lại."
+    
+    show_message("VietDub - Lỗi", error_msg)
 
 if __name__ == '__main__':
     main()
