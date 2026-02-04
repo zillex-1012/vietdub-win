@@ -97,6 +97,9 @@ hiddenimports = [
 hiddenimports += collect_submodules('streamlit')
 hiddenimports += collect_submodules('altair')
 hiddenimports += collect_submodules('tornado')
+hiddenimports += collect_submodules('moviepy')
+hiddenimports += collect_submodules('imageio')
+hiddenimports += collect_submodules('imageio_ffmpeg')
 
 # === ANALYSIS ===
 a = Analysis(
