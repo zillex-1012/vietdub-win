@@ -1,18 +1,14 @@
 """
 VietDub Desktop Launcher
-Uses HTTP health check for reliable server detection
+Runs Streamlit in MAIN thread (required for signal handlers)
+Opens browser from background thread
 """
 import sys
 import os
 import webbrowser
 import time
 import threading
-import traceback
 import urllib.request
-import urllib.error
-
-# Global variable to capture error
-startup_error = None
 
 def get_app_folder():
     """Get folder where app.py is located"""
@@ -21,7 +17,7 @@ def get_app_folder():
     return os.path.dirname(os.path.abspath(__file__))
 
 def server_ready(port):
-    """Check if Streamlit server is actually ready via HTTP health check"""
+    """Check if Streamlit server is ready via HTTP health check"""
     try:
         url = f"http://localhost:{port}/_stcore/health"
         response = urllib.request.urlopen(url, timeout=2)
@@ -29,41 +25,35 @@ def server_ready(port):
     except:
         return False
 
-def run_streamlit_server(app_path, port):
-    """Run Streamlit server"""
-    global startup_error
-    try:
-        from streamlit.web import cli as stcli
-        
-        sys.argv = [
-            'streamlit', 'run', app_path,
-            '--server.port', str(port),
-            '--server.headless', 'true',
-            '--browser.gatherUsageStats', 'false',
-            '--browser.serverAddress', 'localhost',
-            '--global.developmentMode', 'false',
-        ]
-        
-        stcli.main()
-        
-    except SystemExit as e:
-        if e.code != 0:
-            startup_error = f"Streamlit exited with code {e.code}"
-    except Exception as e:
-        startup_error = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
-
-def show_message(title, message, is_error=True):
-    """Show message box on Windows"""
+def open_browser_when_ready(port, url):
+    """Background thread: wait for server and open browser"""
+    for _ in range(45):  # Max 90 seconds
+        if server_ready(port):
+            webbrowser.open(url)
+            return
+        time.sleep(2)
+    
+    # Timeout - show error
     try:
         import ctypes
-        icon = 0x10 if is_error else 0x40
-        ctypes.windll.user32.MessageBoxW(0, message, title, icon)
+        ctypes.windll.user32.MessageBoxW(
+            0, 
+            "Server không khởi động được sau 90 giây.", 
+            "VietDub - Timeout", 
+            0x10
+        )
     except:
-        print(f"{title}: {message}")
+        pass
+
+def show_error(message):
+    """Show error message box"""
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, message, "VietDub - Lỗi", 0x10)
+    except:
+        print(f"Error: {message}")
 
 def main():
-    global startup_error
-    
     app_folder = get_app_folder()
     os.chdir(app_folder)
     
@@ -73,54 +63,40 @@ def main():
     
     # Check app.py exists
     if not os.path.exists(app_py):
-        show_message("VietDub - Lỗi", f"Không tìm thấy file app.py!\n\nĐường dẫn: {app_py}")
+        show_error(f"Không tìm thấy file app.py!\n\nĐường dẫn: {app_py}")
         return
     
     # Set environment
     os.environ['STREAMLIT_SERVER_PORT'] = str(port)
     os.environ['STREAMLIT_SERVER_HEADLESS'] = 'true'
     os.environ['STREAMLIT_BROWSER_GATHER_USAGE_STATS'] = 'false'
+    os.environ['STREAMLIT_BROWSER_SERVER_ADDRESS'] = 'localhost'
     
-    # Start Streamlit in background thread
-    server_thread = threading.Thread(
-        target=run_streamlit_server, 
-        args=(app_py, port),
+    # Start browser opener in BACKGROUND thread
+    browser_thread = threading.Thread(
+        target=open_browser_when_ready,
+        args=(port, url),
         daemon=True
     )
-    server_thread.start()
+    browser_thread.start()
     
-    # Wait for server using HTTP health check (max 90 seconds)
-    for i in range(45):  # 45 attempts x 2 seconds = 90 seconds max
-        # Check for startup error
-        if startup_error:
-            show_message("VietDub - Lỗi khởi động", startup_error)
-            return
+    # Run Streamlit in MAIN thread (required for signal handlers)
+    try:
+        from streamlit.web import cli as stcli
         
-        # Check if thread died unexpectedly
-        if not server_thread.is_alive():
-            error_msg = startup_error if startup_error else "Server stopped unexpectedly"
-            show_message("VietDub - Lỗi", error_msg)
-            return
+        sys.argv = [
+            'streamlit', 'run', app_py,
+            '--server.port', str(port),
+            '--server.headless', 'true',
+            '--browser.gatherUsageStats', 'false',
+            '--browser.serverAddress', 'localhost',
+            '--global.developmentMode', 'false',
+        ]
         
-        # HTTP health check - confirms server is ACTUALLY ready
-        if server_ready(port):
-            webbrowser.open(url)
-            
-            # Keep app running
-            try:
-                while server_thread.is_alive():
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
-            return
+        stcli.main()
         
-        time.sleep(2)  # Check every 2 seconds
-    
-    # Timeout
-    error_msg = "Server không khởi động được sau 90 giây.\n\n"
-    if startup_error:
-        error_msg += startup_error
-    show_message("VietDub - Timeout", error_msg)
+    except Exception as e:
+        show_error(f"Lỗi khởi động Streamlit:\n\n{type(e).__name__}: {str(e)}")
 
 if __name__ == '__main__':
     main()
