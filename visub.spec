@@ -33,6 +33,12 @@ datas += copy_metadata('pydeck')
 datas += copy_metadata('validators')
 datas += copy_metadata('packaging')
 datas += copy_metadata('importlib_metadata')
+datas += copy_metadata('imageio')
+datas += copy_metadata('imageio_ffmpeg')
+datas += copy_metadata('moviepy')
+datas += copy_metadata('decorator')
+datas += copy_metadata('tqdm')
+datas += copy_metadata('proglog')
 
 # === HIDDEN IMPORTS ===
 hiddenimports = [
