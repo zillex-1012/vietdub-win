@@ -23,6 +23,9 @@ datas = [
 datas += collect_data_files('streamlit')
 datas += collect_data_files('altair')
 datas += collect_data_files('pydeck')
+datas += collect_data_files('moviepy')
+datas += collect_data_files('imageio')
+datas += collect_data_files('imageio_ffmpeg')
 
 # CRITICAL: Copy metadata for packages that need it
 datas += copy_metadata('streamlit')
