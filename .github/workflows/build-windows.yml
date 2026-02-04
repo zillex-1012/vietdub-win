@@ -44,6 +44,9 @@ jobs:
         # Streamlit dependencies that need explicit install
         pip install altair pydeck validators watchdog tornado
         pip install pillow packaging importlib-metadata
+        
+        # MoviePy dependencies (need metadata)
+        pip install imageio imageio-ffmpeg decorator tqdm proglog
     
     - name: Build with PyInstaller
       run: |
